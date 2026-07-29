@@ -1,0 +1,1260 @@
+-- سـويـف هب | Soeef Hub - الإصدار المدمج (المحلل الدائري + المفضلة + التبليغ المحلي + لوحة المطور + نظام الحظر الذكي + الجزيئات العائمة)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local AudioService = game:GetService("SoundService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ==================== [ نظام الحماية المدمج (قائمة الحظر الذكية) ] ====================
+local BAN_FILE = "SoeefHub_Bans.json"
+pcall(function()
+    if isfile and isfile(BAN_FILE) then
+        local bans = HttpService:JSONDecode(readfile(BAN_FILE))
+        if bans[LocalPlayer.Name] then
+            local unbanTime = bans[LocalPlayer.Name]
+            if os.time() < unbanTime then
+                local remaining = unbanTime - os.time()
+                local msg = "⛔ تم حظرك من استخدام Soeef Hub بواسطة المطور سويف!"
+                if remaining > 31536000 then 
+                    msg = msg .. "\nنوع الحظر: نهائي 🔨"
+                else
+                    msg = msg .. "\nالوقت المتبقي لفك الحظر: " .. math.ceil(remaining / 60) .. " دقيقة."
+                end
+                LocalPlayer:Kick(msg)
+                task.wait(9e9) -- إيقاف السكربت تماماً
+                return
+            else
+                -- انتهت مدة الحظر (تنظيف الملف)
+                bans[LocalPlayer.Name] = nil
+                if writefile then writefile(BAN_FILE, HttpService:JSONEncode(bans)) end
+            end
+        end
+    end
+end)
+-- ====================================================================================
+
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- ==================== [ تغيير اسم RP التلقائي الملون ] ====================
+task.spawn(function()
+    pcall(function()
+        local RE = ReplicatedStorage:WaitForChild("RE", 2)
+        if RE then
+            local NameTextEvent = RE:WaitForChild("1RPNam1eTex1t", 2)
+            local NameColorEvent = RE:WaitForChild("1RPNam1eColo1r", 2)
+            
+            local function fireEvent(event, ...)
+                if event then event:FireServer(...) end
+            end
+            
+            fireEvent(NameTextEvent, "RolePlayName", "اهلاً بك في سكربت SOEEF HUB")
+            fireEvent(NameTextEvent, "RolePlayBio", "DEVELOPER - SOEEF 🇮🇶")
+            
+            local hue = 0
+            while true do
+                hue = (hue + 0.01) % 1
+                local color = Color3.fromHSV(hue, 1, 1)
+                pcall(function()
+                    fireEvent(NameColorEvent, "PickingRPNameColor", color)
+                    fireEvent(NameColorEvent, "PickingRPBioColor", color)
+                end)
+                task.wait(0.05)
+            end
+        end
+    end)
+end)
+
+-- ==================== [ إعدادات الصوتيات ] ====================
+local VisGroup = Instance.new("SoundGroup", AudioService)
+VisGroup.Name = "SoeefVisGroup"
+VisGroup.Volume = 0 
+
+local VisSound = Instance.new("Sound", AudioService)
+VisSound.Name = "SoeefVisSound"
+VisSound.SoundGroup = VisGroup 
+VisSound.Looped = true
+
+local ClickSound = Instance.new("Sound", game:GetService("Workspace"))
+ClickSound.Name = "SoeefClick"
+ClickSound.SoundId = "rbxassetid://2569506834" 
+ClickSound.Volume = 3
+
+-- ==================== [ نظام حفظ البيانات ] ====================
+local FILE_NAME = "SoeefHub_Config.json"
+local Config = {SelectedColor = "أحمر & أسود", Favorites = {}} 
+
+local ColorPresets = {
+    ["أحمر & أسود"]   = Color3.fromRGB(255, 30, 30),
+    ["أزرق & أسود"]   = Color3.fromRGB(30, 150, 255),
+    ["أصفر & أسود"]   = Color3.fromRGB(255, 230, 0),
+    ["بنفسجي & أسود"] = Color3.fromRGB(150, 30, 255),
+    ["أخضر & أسود"]   = Color3.fromRGB(30, 255, 100),
+    ["برتقالي & أسود"]= Color3.fromRGB(255, 120, 30),
+    ["أبيض & أسود"]   = Color3.fromRGB(220, 220, 220),
+    ["Rainbow"]       = Color3.fromRGB(255, 30, 30)
+}
+
+if isfile and isfile(FILE_NAME) then
+    pcall(function()
+        local data = readfile(FILE_NAME)
+        local decoded = HttpService:JSONDecode(data)
+        if decoded then 
+            if decoded.SelectedColor then Config.SelectedColor = decoded.SelectedColor end
+            if decoded.Favorites then Config.Favorites = decoded.Favorites end
+        end
+    end)
+end
+
+local CurrentColor = ColorPresets[Config.SelectedColor] or ColorPresets["أحمر & أسود"]
+local IsRainbow = (Config.SelectedColor == "Rainbow")
+
+if PlayerGui:FindFirstChild("SoeefHubOfficial") then 
+    PlayerGui.SoeefHubOfficial:Destroy() 
+end
+
+local RE = ReplicatedStorage:FindFirstChild("RE")
+local VehicleRemote = RE and RE:FindFirstChild("1NoMoto1rVehicle1s")
+local SelectedVehicle = "Scooter"
+
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name = "SoeefHubOfficial"
+ScreenGui.ResetOnSpawn = false
+
+-- ==================== [ نظام الإشعارات ] ====================
+local function ShowNotification(text, imageId)
+    local NotifFrame = Instance.new("Frame", ScreenGui)
+    NotifFrame.Size = UDim2.new(0, 240, 0, 45)
+    NotifFrame.Position = UDim2.new(0.5, -120, 0, -60)
+    NotifFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+    NotifFrame.BorderSizePixel = 0
+    NotifFrame.ZIndex = 100
+    
+    Instance.new("UICorner", NotifFrame).CornerRadius = UDim.new(0, 8)
+    
+    local NotifStroke = Instance.new("UIStroke", NotifFrame)
+    NotifStroke.Color = CurrentColor
+    NotifStroke.Thickness = 1.5
+    
+    local NotifImage = Instance.new("ImageLabel", NotifFrame)
+    NotifImage.Size = UDim2.new(0, 25, 0, 25)
+    NotifImage.Position = UDim2.new(1, -35, 0.5, -12.5)
+    NotifImage.BackgroundTransparency = 1
+    NotifImage.Image = "rbxassetid://" .. tostring(imageId or "73803211578344")
+    NotifImage.ZIndex = 101
+    
+    local NotifText = Instance.new("TextLabel", NotifFrame)
+    NotifText.Size = UDim2.new(1, -50, 1, 0)
+    NotifText.Position = UDim2.new(0, 10, 0, 0)
+    NotifText.BackgroundTransparency = 1
+    NotifText.Text = text
+    NotifText.TextColor3 = Color3.fromRGB(240, 240, 245)
+    NotifText.Font = Enum.Font.GothamBold
+    NotifText.TextSize = 12
+    NotifText.TextXAlignment = Enum.TextXAlignment.Right
+    NotifText.ZIndex = 101
+
+    TweenService:Create(NotifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -120, 0, 20)}):Play()
+    
+    task.delay(3, function()
+        local hideTween = TweenService:Create(NotifFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -120, 0, -60)})
+        hideTween:Play()
+        hideTween.Completed:Wait()
+        NotifFrame:Destroy()
+    end)
+end
+
+local function SendHubAlert(title, message)
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = title,
+        Text = message,
+        Icon = "rbxassetid://6031083607", 
+        Duration = 5 
+    })
+end
+
+local function PlayMusic(id)
+    ClickSound:Play()
+    ShowNotification("جاري تشغيل الكود...", "73803211578344")
+    
+    VisSound.SoundId = "rbxassetid://" .. tostring(id)
+    VisSound:Play()
+    
+    if VehicleRemote then
+        task.spawn(function()
+            VehicleRemote:FireServer("Delete NoMotorVehicle")
+            task.wait(0.2)
+            VehicleRemote:FireServer(SelectedVehicle)
+            task.wait(1.0)
+            VehicleRemote:FireServer("PickingScooterMusicText", tostring(id))
+            task.wait(0.1)
+            VehicleRemote:FireServer("PickingScooterMusicText", tonumber(id))
+        end)
+    end
+end
+
+-- ==================== تصميم الواجهة الاحترافية والمحلل الدائري ====================
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.Size = UDim2.new(0, 420, 0, 270)
+MainFrame.Position = UDim2.new(0.5, -210, 0.4, -135)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false 
+
+local BGGradient = Instance.new("UIGradient", MainFrame)
+BGGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 15, 18)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 18))
+})
+BGGradient.Rotation = 45
+
+local MainCorner = Instance.new("UICorner", MainFrame)
+MainCorner.CornerRadius = UDim.new(0, 10)
+
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = CurrentColor
+MainStroke.Thickness = 1.5
+
+local CircularVisFrame = Instance.new("Frame", MainFrame)
+CircularVisFrame.Size = UDim2.new(1, 0, 1, 0)
+CircularVisFrame.BackgroundTransparency = 1
+CircularVisFrame.ZIndex = 0
+
+local Bars = {}
+local NumBars = 45
+local Radius = 100
+
+for i = 1, NumBars do
+    local angle = (i / NumBars) * math.pi * 2
+    local Bar = Instance.new("Frame", CircularVisFrame)
+    Bar.AnchorPoint = Vector2.new(0.5, 0)
+    Bar.Position = UDim2.new(0.7, math.cos(angle) * Radius, 0.5, math.sin(angle) * Radius)
+    Bar.Rotation = math.deg(angle) - 90
+    Bar.Size = UDim2.new(0, 4, 0, 8)
+    Bar.BackgroundColor3 = CurrentColor
+    Bar.BorderSizePixel = 0
+    Bar.BackgroundTransparency = 0.4 
+    Bar.ZIndex = 0
+    Instance.new("UICorner", Bar).CornerRadius = UDim.new(1, 0)
+    table.insert(Bars, {Frame = Bar, Angle = angle, Index = i})
+end
+
+-- ==================== [ إعداد الفكرة رقم 5: حاوية الجزيئات العائمة ] ====================
+local ParticleContainer = Instance.new("Frame", MainFrame)
+ParticleContainer.Size = UDim2.new(1, 0, 1, 0)
+ParticleContainer.BackgroundTransparency = 1
+ParticleContainer.ClipsDescendants = true
+ParticleContainer.ZIndex = 0
+
+local LiveParticles = {}
+-- ====================================================================================
+
+local Header = Instance.new("Frame", MainFrame)
+Header.Size = UDim2.new(1, 0, 0, 40)
+Header.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+Header.BorderSizePixel = 0
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel", Header)
+Title.Size = UDim2.new(1, -150, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "SOEEF HUB v2 | سـويـف هـب المطور"
+Title.TextColor3 = CurrentColor
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.TextSize = 13
+
+local CloseBtn = Instance.new("TextButton", Header)
+CloseBtn.Size = UDim2.new(0, 22, 0, 22)
+CloseBtn.Position = UDim2.new(1, -32, 0, 9)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(35, 20, 25)
+CloseBtn.Text = "×"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 75, 75)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+local OpenBtn = Instance.new("ImageButton", ScreenGui)
+OpenBtn.Size = UDim2.new(0, 50, 0, 50)
+OpenBtn.Position = UDim2.new(0, 20, 0.5, -25)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+OpenBtn.Image = "rbxassetid://119016233937539" 
+OpenBtn.Visible = false 
+OpenBtn.Active = true
+OpenBtn.Draggable = true
+Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(1, 0) 
+
+local OpenStroke = Instance.new("UIStroke", OpenBtn)
+OpenStroke.Thickness = 2
+OpenStroke.Color = CurrentColor
+
+OpenBtn.MouseButton1Click:Connect(function() 
+    ClickSound:Play()
+    MainFrame.Visible = not MainFrame.Visible 
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() 
+    ClickSound:Play()
+    ScreenGui:Destroy() 
+end)
+
+-- شريط التبويبات
+local TabBar = Instance.new("ScrollingFrame", MainFrame)
+TabBar.Size = UDim2.new(0, 120, 1, -45)
+TabBar.Position = UDim2.new(0, 5, 0, 45)
+TabBar.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+TabBar.BorderSizePixel = 0
+TabBar.ScrollBarThickness = 0
+
+local TabLayout = Instance.new("UIListLayout", TabBar)
+TabLayout.Padding = UDim.new(0, 4)
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local Container = Instance.new("Frame", MainFrame)
+Container.Size = UDim2.new(1, -135, 1, -50)
+Container.Position = UDim2.new(0, 130, 0, 45)
+Container.BackgroundTransparency = 1
+
+local pages = {}
+local tabButtons = {}
+
+local function CreateTab(name, order)
+    local TabBtn = Instance.new("TextButton", TabBar)
+    TabBtn.Size = UDim2.new(1, 0, 0, 32)
+    TabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    TabBtn.Text = "  " .. name
+    TabBtn.TextColor3 = Color3.fromRGB(150, 150, 160)
+    TabBtn.Font = Enum.Font.GothamSemibold
+    TabBtn.TextSize = 11
+    TabBtn.TextXAlignment = Enum.TextXAlignment.Left
+    TabBtn.LayoutOrder = order
+    Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 6)
+    
+    local Page = Instance.new("ScrollingFrame", Container)
+    Page.Size = UDim2.new(1, 0, 1, 0)
+    Page.BackgroundTransparency = 1
+    Page.Visible = (order == 1)
+    Page.ScrollBarThickness = 2
+    Page.ScrollBarImageColor3 = CurrentColor
+    
+    local PageLayout = Instance.new("UIListLayout", Page)
+    PageLayout.Padding = UDim.new(0, 6)
+    
+    PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 10)
+    end)
+    
+    if order == 1 then 
+        TabBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 45) 
+        TabBtn.TextColor3 = IsRainbow and Color3.fromRGB(255,255,255) or CurrentColor
+        TabBtn.Name = "ActiveTab"
+    else
+        TabBtn.Name = "NormalTab"
+    end
+    
+    TabBtn.MouseButton1Click:Connect(function()
+        ClickSound:Play()
+        for _, p in pairs(pages) do p.Visible = false end
+        for _, b in pairs(tabButtons) do 
+            b.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+            b.TextColor3 = Color3.fromRGB(150, 150, 160)
+            b.Name = "NormalTab"
+        end
+        Page.Visible = true
+        TabBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+        TabBtn.TextColor3 = IsRainbow and Color3.fromRGB(255,255,255) or CurrentColor
+        TabBtn.Name = "ActiveTab"
+    end)
+    
+    pages[name] = Page
+    table.insert(tabButtons, TabBtn)
+    return Page
+end
+
+-- إنشاء التبويبات الأساسية
+local BrookhavenPage    = CreateTab("تشغيل بالكود", 1)
+local FavoritesPage     = CreateTab("⭐ المفضلة", 2)
+local ForeignCodesPage  = CreateTab("أكواد أجنبية", 3)
+local ArabicMusicPage   = CreateTab("أغاني عربية", 4)
+local NasheedPage       = CreateTab("أناشيد", 5)
+local SabPage           = CreateTab("سب والتحاد", 6)
+local RandomPage        = CreateTab("عشوائي ومضحك", 7)
+local DevsPage          = CreateTab("المطورين والمساعدين", 8)
+local TrollPage         = CreateTab("أوامر التحكم والترول", 9)
+local SettingsPage      = CreateTab("⚙️ الإعدادات ثيم", 10)
+
+-- ==================== [ تبويب التبليغ والاقتراحات (يظهر للكل) ] ====================
+local ReportPage = CreateTab("📩 تبليغ واقتراحات", 11)
+
+local ReportBox = Instance.new("TextBox", ReportPage)
+ReportBox.Size = UDim2.new(1, -8, 0, 36)
+ReportBox.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+ReportBox.PlaceholderText = " اكتب كود الأغنية أو المشكلة هنا..."
+ReportBox.Text = ""
+ReportBox.TextColor3 = Color3.new(1, 1, 1)
+ReportBox.Font = Enum.Font.Gotham
+ReportBox.TextSize = 11
+ReportBox.TextXAlignment = Enum.TextXAlignment.Left
+Instance.new("UICorner", ReportBox).CornerRadius = UDim.new(0, 6)
+
+local SendReportBtn = Instance.new("TextButton", ReportPage)
+SendReportBtn.Size = UDim2.new(1, -8, 0, 32)
+SendReportBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+SendReportBtn.Text = "إرسال إلى المطور سويف 🚀"
+SendReportBtn.TextColor3 = Color3.new(1, 1, 1)
+SendReportBtn.Font = Enum.Font.GothamBold
+SendReportBtn.TextSize = 11
+Instance.new("UICorner", SendReportBtn).CornerRadius = UDim.new(0, 6)
+
+SendReportBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    local msg = ReportBox.Text
+    if msg ~= "" then
+        local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+        local logEntry = "[" .. timestamp .. "] من: " .. LocalPlayer.Name .. " | الرسالة: " .. msg .. "\n"
+        
+        pcall(function()
+            if isfile and isfile("SoeefHub_Reports.txt") then
+                appendfile("SoeefHub_Reports.txt", logEntry)
+            elseif writefile then
+                writefile("SoeefHub_Reports.txt", logEntry)
+            end
+        end)
+        
+        ShowNotification("تم حفظ رسالتك محلياً بنجاح!", "73803211578344")
+        ReportBox.Text = ""
+    end
+end)
+
+-- ==================== [ لوحة المطور الخاصة ونظام الحظر (تظهر فقط لـ Seif565860) ] ====================
+if string.lower(LocalPlayer.Name) == string.lower("Seif565860") then
+    local AdminPage = CreateTab("👑 لوحة سويف", 12)
+    
+    local WelcomeFrame = Instance.new("Frame", AdminPage)
+    WelcomeFrame.Size = UDim2.new(1, -8, 0, 45)
+    WelcomeFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+    WelcomeFrame.BorderSizePixel = 0
+    Instance.new("UICorner", WelcomeFrame).CornerRadius = UDim.new(0, 6)
+
+    local WelcomeText = Instance.new("TextLabel", WelcomeFrame)
+    WelcomeText.Size = UDim2.new(1, 0, 1, 0)
+    WelcomeText.BackgroundTransparency = 1
+    WelcomeText.Text = "أهلاً بك يا مطور السكربت 🇮🇶\nهذا التبويب مشفر ولا يظهر لأي لاعب غيرك!"
+    WelcomeText.TextColor3 = Color3.fromRGB(255, 215, 0)
+    WelcomeText.Font = Enum.Font.GothamBold
+    WelcomeText.TextSize = 11
+    
+    -- ==================== [ قسم عرض التبليغات والاقتراحات في قائمة داخلية بدلاً من F9 ] ====================
+    local ReportsTitle = Instance.new("TextLabel", AdminPage)
+    ReportsTitle.Size = UDim2.new(1, -8, 0, 25)
+    ReportsTitle.BackgroundTransparency = 1
+    ReportsTitle.Text = "📥 سجل التبليغات والاقتراحات الواردة:"
+    ReportsTitle.TextColor3 = Color3.fromRGB(0, 210, 255)
+    ReportsTitle.Font = Enum.Font.GothamBold
+    ReportsTitle.TextSize = 11
+    ReportsTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local ReportsContainer = Instance.new("ScrollingFrame", AdminPage)
+    ReportsContainer.Size = UDim2.new(1, -8, 0, 130)
+    ReportsContainer.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+    ReportsContainer.BorderSizePixel = 0
+    ReportsContainer.ScrollBarThickness = 2
+    ReportsContainer.ScrollBarImageColor3 = CurrentColor
+    Instance.new("UICorner", ReportsContainer).CornerRadius = UDim.new(0, 6)
+
+    local ReportsLayout = Instance.new("UIListLayout", ReportsContainer)
+    ReportsLayout.Padding = UDim.new(0, 4)
+    ReportsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    ReportsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        ReportsContainer.CanvasSize = UDim2.new(0, 0, 0, ReportsLayout.AbsoluteContentSize.Y + 10)
+    end)
+
+    local function RefreshReportsUI()
+        for _, child in pairs(ReportsContainer:GetChildren()) do
+            if child:IsA("Frame") or child:IsA("TextLabel") then
+                child:Destroy()
+            end
+        end
+
+        pcall(function()
+            if isfile and isfile("SoeefHub_Reports.txt") then
+                local content = readfile("SoeefHub_Reports.txt")
+                local lines = {}
+                for line in content:gmatch("[^\r\n]+") do
+                    table.insert(lines, line)
+                end
+                
+                if #lines == 0 then
+                    local emptyLbl = Instance.new("TextLabel", ReportsContainer)
+                    emptyLbl.Size = UDim2.new(1, 0, 0, 30)
+                    emptyLbl.BackgroundTransparency = 1
+                    emptyLbl.Text = "لا توجد تبليغات مسجلة حالياً."
+                    emptyLbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+                    emptyLbl.Font = Enum.Font.Gotham
+                    emptyLbl.TextSize = 11
+                    emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
+                else
+                    for _, line in ipairs(lines) do
+                        local rCard = Instance.new("Frame", ReportsContainer)
+                        rCard.Size = UDim2.new(1, -6, 0, 36)
+                        rCard.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+                        rCard.BorderSizePixel = 0
+                        Instance.new("UICorner", rCard).CornerRadius = UDim.new(0, 5)
+
+                        local rText = Instance.new("TextLabel", rCard)
+                        rText.Size = UDim2.new(1, -10, 1, 0)
+                        rText.Position = UDim2.new(0, 5, 0, 0)
+                        rText.BackgroundTransparency = 1
+                        rText.Text = line
+                        rText.TextColor3 = Color3.fromRGB(230, 230, 235)
+                        rText.Font = Enum.Font.GothamMedium
+                        rText.TextSize = 10
+                        rText.TextXAlignment = Enum.TextXAlignment.Left
+                        rText.TextWrapped = true
+                    end
+                end
+            else
+                local emptyLbl = Instance.new("TextLabel", ReportsContainer)
+                emptyLbl.Size = UDim2.new(1, 0, 0, 30)
+                emptyLbl.BackgroundTransparency = 1
+                emptyLbl.Text = "ملف التبليغات غير موجود أو فارغ."
+                emptyLbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+                emptyLbl.Font = Enum.Font.Gotham
+                emptyLbl.TextSize = 11
+                emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
+            end
+        end)
+    end
+
+    local RefreshReportsBtn = Instance.new("TextButton", AdminPage)
+    RefreshReportsBtn.Size = UDim2.new(1, -8, 0, 32)
+    RefreshReportsBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 80)
+    RefreshReportsBtn.Text = "🔄 تحديث وعرض التبليغات في القائمة"
+    RefreshReportsBtn.TextColor3 = Color3.new(1, 1, 1)
+    RefreshReportsBtn.Font = Enum.Font.GothamBold
+    RefreshReportsBtn.TextSize = 11
+    Instance.new("UICorner", RefreshReportsBtn).CornerRadius = UDim.new(0, 6)
+
+    RefreshReportsBtn.MouseButton1Click:Connect(function()
+        ClickSound:Play()
+        RefreshReportsUI()
+        ShowNotification("تم تحديث قائمة التبليغات!", "73803211578344")
+    end)
+
+    -- تعبئة القائمة تلقائياً عند فتح اللوحة
+    RefreshReportsUI()
+    -- ====================================================================================
+    
+    -- إضافة قسم إدارة الحظر
+    local BanTitle = Instance.new("TextLabel", AdminPage)
+    BanTitle.Size = UDim2.new(1, -8, 0, 25)
+    BanTitle.BackgroundTransparency = 1
+    BanTitle.Text = "🔨 نظام إدارة الحظر الذكي"
+    BanTitle.TextColor3 = Color3.fromRGB(255, 75, 75)
+    BanTitle.Font = Enum.Font.GothamBold
+    BanTitle.TextSize = 12
+    BanTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local BanTargetBox = Instance.new("TextBox", AdminPage)
+    BanTargetBox.Size = UDim2.new(1, -8, 0, 32)
+    BanTargetBox.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+    BanTargetBox.PlaceholderText = " اكتب اسم حساب اللاعب للحظر/الرفع..."
+    BanTargetBox.Text = ""
+    BanTargetBox.TextColor3 = Color3.new(1, 1, 1)
+    BanTargetBox.Font = Enum.Font.Gotham
+    BanTargetBox.TextSize = 11
+    Instance.new("UICorner", BanTargetBox).CornerRadius = UDim.new(0, 6)
+
+    local DurationBtn = Instance.new("TextButton", AdminPage)
+    DurationBtn.Size = UDim2.new(1, -8, 0, 32)
+    DurationBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    DurationBtn.Text = "المدة: 10 ثواني (اضغط للتغيير) ⏳"
+    DurationBtn.TextColor3 = Color3.fromRGB(200, 200, 255)
+    DurationBtn.Font = Enum.Font.GothamBold
+    DurationBtn.TextSize = 11
+    Instance.new("UICorner", DurationBtn).CornerRadius = UDim.new(0, 6)
+
+    local DurationList = {
+        {Name = "10 ثواني", Time = 10},
+        {Name = "5 دقائق", Time = 300},
+        {Name = "يوم واحد", Time = 86400},
+        {Name = "يومين", Time = 172800},
+        {Name = "أسبوع", Time = 604800},
+        {Name = "نهائي", Time = 9999999999}
+    }
+    local currentDurIdx = 1
+
+    DurationBtn.MouseButton1Click:Connect(function()
+        ClickSound:Play()
+        currentDurIdx = currentDurIdx + 1
+        if currentDurIdx > #DurationList then currentDurIdx = 1 end
+        DurationBtn.Text = "المدة: " .. DurationList[currentDurIdx].Name .. " (اضغط للتغيير) ⏳"
+    end)
+
+    local BanActionBtn = Instance.new("TextButton", AdminPage)
+    BanActionBtn.Size = UDim2.new(1, -8, 0, 32)
+    BanActionBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    BanActionBtn.Text = "إعطاء حظر للاعب 🔨"
+    BanActionBtn.TextColor3 = Color3.new(1, 1, 1)
+    BanActionBtn.Font = Enum.Font.GothamBold
+    BanActionBtn.TextSize = 11
+    Instance.new("UICorner", BanActionBtn).CornerRadius = UDim.new(0, 6)
+
+    local UnbanActionBtn = Instance.new("TextButton", AdminPage)
+    UnbanActionBtn.Size = UDim2.new(1, -8, 0, 32)
+    UnbanActionBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+    UnbanActionBtn.Text = "إزالة الحظر ♻️"
+    UnbanActionBtn.TextColor3 = Color3.new(1, 1, 1)
+    UnbanActionBtn.Font = Enum.Font.GothamBold
+    UnbanActionBtn.TextSize = 11
+    Instance.new("UICorner", UnbanActionBtn).CornerRadius = UDim.new(0, 6)
+
+    local function ModifyBan(targetName, duration, isUnban)
+        if targetName == "" then ShowNotification("اكتب اسم اللاعب أولاً!", "73803211578344") return end
+        
+        local currentBans = {}
+        if isfile and isfile(BAN_FILE) then
+            pcall(function() currentBans = HttpService:JSONDecode(readfile(BAN_FILE)) or {} end)
+        end
+        
+        if isUnban then
+            if currentBans[targetName] then
+                currentBans[targetName] = nil
+                ShowNotification("✅ تم إزالة الحظر عن: " .. targetName, "73803211578344")
+            else
+                ShowNotification("اللاعب غير محظور أصلاً!", "73803211578344")
+            end
+        else
+            currentBans[targetName] = os.time() + duration
+            ShowNotification("🔨 تم حظر " .. targetName .. " لمدة " .. DurationList[currentDurIdx].Name, "73803211578344")
+        end
+        
+        if writefile then
+            pcall(function() writefile(BAN_FILE, HttpService:JSONEncode(currentBans)) end)
+        end
+    end
+
+    BanActionBtn.MouseButton1Click:Connect(function() ClickSound:Play(); ModifyBan(BanTargetBox.Text, DurationList[currentDurIdx].Time, false) end)
+    UnbanActionBtn.MouseButton1Click:Connect(function() ClickSound:Play(); ModifyBan(BanTargetBox.Text, 0, true) end)
+
+    task.spawn(function()
+        task.wait(4.5)
+        SendHubAlert("صلاحيات المطور", "تم تفعيل لوحة الإدارة ونظام الحظر الخاص بك بنجاح يا سويف.")
+    end)
+end
+
+-- ==================== [ الدالة السريعة للأغاني ] ====================
+local function QuickSong(page, text, id)
+    local btn = Instance.new("TextButton", page)
+    btn.Size = UDim2.new(1, -8, 0, 34)
+    btn.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+    btn.Text = "  " .. text
+    btn.TextColor3 = Color3.fromRGB(220, 220, 225)
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 11
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    local note = Instance.new("TextLabel", btn)
+    note.Size = UDim2.new(0, 30, 1, 0)
+    note.Position = UDim2.new(1, -35, 0, 0)
+    note.BackgroundTransparency = 1
+    note.Text = "🎵"
+    note.TextSize = 12
+    
+    btn.MouseButton1Click:Connect(function() PlayMusic(id) end)
+end
+
+-- ==================== [ نظام المفضلة ] ====================
+local function RefreshFavorites()
+    for _, child in pairs(FavoritesPage:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    for id, _ in pairs(Config.Favorites) do
+        local favBtn = Instance.new("TextButton", FavoritesPage)
+        favBtn.Size = UDim2.new(1, -8, 0, 34)
+        favBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+        favBtn.Text = "  🎵 أغنية: " .. tostring(id)
+        favBtn.TextColor3 = Color3.fromRGB(220, 220, 225)
+        favBtn.Font = Enum.Font.GothamMedium
+        favBtn.TextSize = 11
+        favBtn.TextXAlignment = Enum.TextXAlignment.Left
+        Instance.new("UICorner", favBtn).CornerRadius = UDim.new(0, 6)
+
+        local delBtn = Instance.new("TextButton", favBtn)
+        delBtn.Size = UDim2.new(0, 30, 1, 0)
+        delBtn.Position = UDim2.new(1, -35, 0, 0)
+        delBtn.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+        delBtn.Text = "🗑️"
+        delBtn.Font = Enum.Font.GothamBold
+        delBtn.TextColor3 = Color3.new(1,1,1)
+        Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0, 6)
+
+        favBtn.MouseButton1Click:Connect(function() PlayMusic(id) end)
+
+        delBtn.MouseButton1Click:Connect(function()
+            ClickSound:Play()
+            Config.Favorites[tostring(id)] = nil
+            if writefile then pcall(function() writefile(FILE_NAME, HttpService:JSONEncode(Config)) end) end
+            RefreshFavorites()
+        end)
+    end
+end
+
+-- محتويات تشغيل بالكود
+local DropdownBtn = Instance.new("TextButton", BrookhavenPage)
+DropdownBtn.Size = UDim2.new(1, -8, 0, 30)
+DropdownBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+DropdownBtn.Text = "المركبة: Scooter"
+DropdownBtn.TextColor3 = CurrentColor
+DropdownBtn.Font = Enum.Font.GothamBold
+DropdownBtn.TextSize = 11
+Instance.new("UICorner", DropdownBtn).CornerRadius = UDim.new(0, 6)
+
+local vehicles = {"Scooter", "SegwaySmall", "SkateBoard"}
+local vIdx = 1
+DropdownBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    vIdx = vIdx + 1
+    if vIdx > #vehicles then vIdx = 1 end
+    SelectedVehicle = vehicles[vIdx]
+    DropdownBtn.Text = "المركبة: " .. SelectedVehicle
+end)
+
+local TextBox = Instance.new("TextBox", BrookhavenPage)
+TextBox.Size = UDim2.new(1, -8, 0, 32)
+TextBox.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+TextBox.PlaceholderText = " أدخل كود الصوت هنا..."
+TextBox.Text = ""
+TextBox.TextColor3 = Color3.new(1, 1, 1)
+TextBox.Font = Enum.Font.Gotham
+TextBox.TextSize = 11
+TextBox.TextXAlignment = Enum.TextXAlignment.Left
+Instance.new("UICorner", TextBox).CornerRadius = UDim.new(0, 6)
+
+local PlayBtn = Instance.new("TextButton", BrookhavenPage)
+PlayBtn.Size = UDim2.new(1, -8, 0, 32)
+PlayBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+PlayBtn.Text = "تشغيل الصوت الآن 🔊"
+PlayBtn.TextColor3 = Color3.new(1, 1, 1)
+PlayBtn.Font = Enum.Font.GothamBold
+PlayBtn.TextSize = 11
+Instance.new("UICorner", PlayBtn).CornerRadius = UDim.new(0, 6)
+PlayBtn.MouseButton1Click:Connect(function() 
+    if TextBox.Text ~= "" then PlayMusic(TextBox.Text) end 
+end)
+
+local StopBtn = Instance.new("TextButton", BrookhavenPage)
+StopBtn.Size = UDim2.new(1, -8, 0, 32)
+StopBtn.BackgroundColor3 = Color3.fromRGB(130, 35, 35)
+StopBtn.Text = "إيقاف وحذف المركبة ❌"
+StopBtn.TextColor3 = Color3.new(1, 1, 1)
+StopBtn.Font = Enum.Font.GothamBold
+StopBtn.TextSize = 11
+Instance.new("UICorner", StopBtn).CornerRadius = UDim.new(0, 6)
+StopBtn.MouseButton1Click:Connect(function() 
+    ClickSound:Play()
+    if VehicleRemote then VehicleRemote:FireServer("Delete NoMotorVehicle") end 
+    VisSound:Stop() 
+end)
+
+local SaveBtn = Instance.new("TextButton", BrookhavenPage)
+SaveBtn.Size = UDim2.new(1, -8, 0, 32)
+SaveBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 20)
+SaveBtn.Text = "⭐ حفظ الأغنية في المفضلة"
+SaveBtn.TextColor3 = Color3.new(1, 1, 1)
+SaveBtn.Font = Enum.Font.GothamBold
+SaveBtn.TextSize = 11
+Instance.new("UICorner", SaveBtn).CornerRadius = UDim.new(0, 6)
+SaveBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    if TextBox.Text ~= "" then
+        Config.Favorites[tostring(TextBox.Text)] = true
+        if writefile then pcall(function() writefile(FILE_NAME, HttpService:JSONEncode(Config)) end) end
+        ShowNotification("تم الحفظ في المفضلة بنجاح!")
+        RefreshFavorites()
+    end
+end)
+
+RefreshFavorites()
+
+-- الأكواد
+QuickSong(ForeignCodesPage, "أغنية تنتاسيون", "136601122443530")
+QuickSong(ForeignCodesPage, "ايام نوت بيبي", "94308954886862")
+QuickSong(ForeignCodesPage, "كينج فون", "92784642779370")
+QuickSong(ForeignCodesPage, "المغني الي احبة 69", "134376096357929")
+QuickSong(ForeignCodesPage, "I want to kill myself", "75707240997946")
+QuickSong(ForeignCodesPage, "كينج فون 2", "86370168350239")
+QuickSong(ForeignCodesPage, "بيلي ايلش يمكن", "83768816338009")
+QuickSong(ForeignCodesPage, "مال عصابات", "79622922062181")
+QuickSong(ForeignCodesPage, "تنتاسيون2", "99151465132742")
+QuickSong(ForeignCodesPage, "اجنبي هادئ", "137851435435348")
+QuickSong(ForeignCodesPage, "اجنبي مشهور", "102990023022593")
+QuickSong(ForeignCodesPage, "Turabi Rad", "105189119143132")
+QuickSong(ForeignCodesPage, "مدري جرب بنفسك", "127012181396114")
+QuickSong(ForeignCodesPage, "برازيلي", "1841683877")
+QuickSong(ForeignCodesPage, "67+اهات", "98478274854651")
+
+QuickSong(ArabicMusicPage, "تعال طيني حنية", "111811908070601")
+QuickSong(ArabicMusicPage, "حجي يابو البار", "111811908070601")
+QuickSong(ArabicMusicPage, "ميت اني من فركاه", "98313375960954")
+QuickSong(ArabicMusicPage, "مهموم", "139296082581664")
+QuickSong(ArabicMusicPage, "علي تحني", "124123680327164")
+QuickSong(ArabicMusicPage, "من غبت عني", "93297302504653")
+QuickSong(ArabicMusicPage, "راب عراقي نادر", "116272643488592")
+QuickSong(ArabicMusicPage, "ياشرطي نادر", "120675895107276")
+QuickSong(ArabicMusicPage, "صدرية", "125570651517245")
+QuickSong(ArabicMusicPage, "كل عقلك", "122774951440401")
+QuickSong(ArabicMusicPage, "عراقي ياخذني الطيف", "106271890575602")
+QuickSong(ArabicMusicPage, "ديجي عراقي", "130012558337510")
+QuickSong(ArabicMusicPage, "لو تبوس ايدنة مانريدك", "80039364766636")
+QuickSong(ArabicMusicPage, "صدرية2", "102614859260356")
+QuickSong(ArabicMusicPage, "لطمية", "70969698201901")
+QuickSong(ArabicMusicPage, "مال حب نادره", "87726172869334")
+
+QuickSong(NasheedPage, "لواء", "71701207559451")
+QuickSong(NasheedPage, "اسلايمة", "128146983730820")
+QuickSong(NasheedPage, "غضب غضب", "124393177931443")
+QuickSong(NasheedPage, "التحاد السويفتي", "126581313655066")
+QuickSong(NasheedPage, "جندي امريكة", "134693931986753")
+QuickSong(NasheedPage, "نشيد", "129963257934687")
+QuickSong(NasheedPage, "نشيد 2", "75019437630721")
+QuickSong(NasheedPage, "رديت الله واكبر", "100754234156181")
+QuickSong(NasheedPage, "نشيد3", "127840997774724")
+QuickSong(NasheedPage, "تريد سجين لو طلقة", "101745469796290")
+QuickSong(NasheedPage, "القول قول صورام", "135009652401688")
+QuickSong(NasheedPage, "النصر توال", "87915361949996")
+QuickSong(NasheedPage, "نشيد4", "125175922597354")
+
+QuickSong(SabPage, "كلاش سب", "91611648163631")
+QuickSong(SabPage, "كلاش وكر العصفور", "94943308357738")
+QuickSong(SabPage, "ابو زعبل سب", "87920916682123")
+QuickSong(SabPage, "سب", "136642630446506")
+QuickSong(SabPage, "سب2", "75745765058107")
+QuickSong(SabPage, "كسمك ياعبد الحي", "7942547789")
+QuickSong(SabPage, "كلما طال القيضب", "131794008455004")
+
+QuickSong(RandomPage, "يقول الشاعر", "80028372323860")
+QuickSong(RandomPage, "ابلع ياهطف ينوب", "112847640842699")
+QuickSong(RandomPage, "عندك حمص بالحمة", "110644742579450")
+QuickSong(RandomPage, "عندك شاورمة الحلوين", "98970212961205")
+QuickSong(RandomPage, "يارب", "77526461445016")
+QuickSong(RandomPage, "ياسيدي يارسولالله", "116250144304115")
+
+-- المطورين
+local function AddStaffCard(name, role, color)
+    local card = Instance.new("Frame", DevsPage)
+    card.Size = UDim2.new(1, -8, 0, 38)
+    card.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+    
+    local nameLbl = Instance.new("TextLabel", card)
+    nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
+    nameLbl.Position = UDim2.new(0, 10, 0, 0)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = name
+    nameLbl.TextColor3 = Color3.fromRGB(240, 240, 245)
+    nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextSize = 11
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local roleLbl = Instance.new("TextLabel", card)
+    roleLbl.Size = UDim2.new(0.35, 0, 1, 0)
+    roleLbl.Position = UDim2.new(0.65, -10, 0, 0)
+    roleLbl.BackgroundTransparency = 1
+    roleLbl.Text = role
+    roleLbl.TextColor3 = color
+    roleLbl.Font = Enum.Font.GothamBold
+    roleLbl.TextSize = 10
+    roleLbl.TextXAlignment = Enum.TextXAlignment.Right
+end
+
+AddStaffCard("المطور سـويـف", "[ OWNER ]", Color3.fromRGB(255, 200, 0))
+AddStaffCard("المطور نيمار حسنين", "[ DEVELOPER ]", Color3.fromRGB(100, 255, 100)) 
+AddStaffCard("المساعد ايان", "[ HELPER ]", Color3.fromRGB(0, 210, 255))
+AddStaffCard("المساعد سيف", "[ HELPER ]", Color3.fromRGB(0, 210, 255))
+AddStaffCard("المساعد عليوي", "[ HELPER ]", Color3.fromRGB(0, 210, 255))
+
+local thxFrame = Instance.new("Frame", DevsPage)
+thxFrame.Size = UDim2.new(1, -8, 0, 55)
+thxFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+thxFrame.BorderSizePixel = 0
+Instance.new("UICorner", thxFrame).CornerRadius = UDim.new(0, 6)
+
+local thxLbl = Instance.new("TextLabel", thxFrame)
+thxLbl.Size = UDim2.new(1, -12, 1, -12)
+thxLbl.Position = UDim2.new(0, 6, 0, 6)
+thxLbl.BackgroundTransparency = 1
+thxLbl.Text = "شكراً لكل المساعدين على دعمهم بالأكواد لإنجاح التحديث الجديد!\nحساب التيك توك للتواصل: .nixor"
+thxLbl.TextColor3 = Color3.fromRGB(140, 140, 150)
+thxLbl.Font = Enum.Font.GothamMedium
+thxLbl.TextSize = 10
+thxLbl.TextWrapped = true
+
+-- التحكم
+local TargetBox = Instance.new("TextBox", TrollPage)
+TargetBox.Size = UDim2.new(1, -8, 0, 32)
+TargetBox.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+TargetBox.PlaceholderText = " اكتب أول 3 أحرف من اسم اللاعب..."
+TargetBox.Text = ""
+TargetBox.TextColor3 = Color3.new(1, 1, 1)
+TargetBox.Font = Enum.Font.Gotham
+TargetBox.TextSize = 11
+TargetBox.TextXAlignment = Enum.TextXAlignment.Left
+Instance.new("UICorner", TargetBox).CornerRadius = UDim.new(0, 6)
+
+local NakedBtn = Instance.new("TextButton", TrollPage)
+NakedBtn.Size = UDim2.new(1, -8, 0, 32)
+NakedBtn.BackgroundColor3 = Color3.fromRGB(140, 20, 60)
+NakedBtn.Text = "تشليح الملابس 👕❌"
+NakedBtn.TextColor3 = Color3.new(1, 1, 1)
+NakedBtn.Font = Enum.Font.GothamBold
+NakedBtn.TextSize = 11
+Instance.new("UICorner", NakedBtn).CornerRadius = UDim.new(0, 6)
+
+local ReturnBtn = Instance.new("TextButton", TrollPage)
+ReturnBtn.Size = UDim2.new(1, -8, 0, 32)
+ReturnBtn.BackgroundColor3 = Color3.fromRGB(20, 120, 60)
+ReturnBtn.Text = "↩️ إرجاع ملابس اللاعب الأصلية"
+ReturnBtn.TextColor3 = Color3.new(1, 1, 1)
+ReturnBtn.Font = Enum.Font.GothamBold
+ReturnBtn.TextSize = 11
+Instance.new("UICorner", ReturnBtn).CornerRadius = UDim.new(0, 6)
+
+local SavedClothes = {}
+
+local function GetPlayerByShortName(shortName)
+    shortName = shortName:lower()
+    if shortName == "" or #shortName < 3 then return nil end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Name:lower():sub(1, #shortName) == shortName or p.DisplayName:lower():sub(1, #shortName) == shortName then
+            return p
+        end
+    end
+    return nil
+end
+
+NakedBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    local target = GetPlayerByShortName(TargetBox.Text)
+    if target and target.Character then
+        local char = target.Character
+        if not SavedClothes[target.UserId] then
+            SavedClothes[target.UserId] = {}
+            for _, obj in pairs(char:GetChildren()) do
+                if obj:IsA("Clothing") or obj:IsA("ShirtGraphic") then
+                    table.insert(SavedClothes[target.UserId], obj:Clone())
+                end
+            end
+        end
+        for _, obj in pairs(char:GetChildren()) do
+            if obj:IsA("Clothing") or obj:IsA("ShirtGraphic") then
+                obj:Destroy()
+            end
+        end
+    end
+end)
+
+ReturnBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    local target = GetPlayerByShortName(TargetBox.Text)
+    if target and target.Character and SavedClothes[target.UserId] then
+        local char = target.Character
+        for _, obj in pairs(char:GetChildren()) do
+            if obj:IsA("Clothing") or obj:IsA("ShirtGraphic") then
+                obj:Destroy()
+            end
+        end
+        for _, clothClone in pairs(SavedClothes[target.UserId]) do
+            clothClone:Clone().Parent = char
+        end
+        SavedClothes[target.UserId] = nil
+    end
+end)
+
+-- الإعدادات
+local function UpdateUITheme(color)
+    if IsRainbow then return end
+    MainStroke.Color = color
+    Title.TextColor3 = color
+    OpenStroke.Color = color
+    DropdownBtn.TextColor3 = color
+    for _, b in pairs(tabButtons) do
+        if b.Name == "ActiveTab" then b.TextColor3 = color end
+    end
+    for _, data in pairs(Bars) do
+        data.Frame.BackgroundColor3 = color
+    end
+end
+
+local function CreateDualColorBtn(colorName, colorValue)
+    local btn = Instance.new("TextButton", SettingsPage)
+    btn.Size = UDim2.new(1, -8, 0, 36)
+    btn.BackgroundColor3 = Color3.fromRGB(22, 22, 26) 
+    btn.Text = "  [ " .. colorName .. " ]"
+    btn.TextColor3 = colorValue
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    local sideLine = Instance.new("Frame", btn)
+    sideLine.Size = UDim2.new(0, 4, 1, 0)
+    sideLine.BackgroundColor3 = colorValue
+    sideLine.BorderSizePixel = 0
+    
+    btn.MouseButton1Click:Connect(function()
+        ClickSound:Play()
+        IsRainbow = false
+        Config.SelectedColor = colorName
+        CurrentColor = colorValue
+        if writefile then pcall(function() writefile(FILE_NAME, HttpService:JSONEncode(Config)) end) end
+        UpdateUITheme(colorValue)
+    end)
+end
+
+CreateDualColorBtn("أحمر & أسود", ColorPresets["أحمر & أسود"])
+CreateDualColorBtn("أزرق & أسود", ColorPresets["أزرق & أسود"])
+CreateDualColorBtn("أصفر & أسود", ColorPresets["أصفر & أسود"])
+CreateDualColorBtn("بنفسجي & أسود", ColorPresets["بنفسجي & أسود"])
+CreateDualColorBtn("أخضر & أسود", ColorPresets["أخضر & أسود"])
+CreateDualColorBtn("برتقالي & أسود", ColorPresets["برتقالي & أسود"])
+CreateDualColorBtn("أبيض & أسود", ColorPresets["أبيض & أسود"])
+
+local RainbowBtn = Instance.new("TextButton", SettingsPage)
+RainbowBtn.Size = UDim2.new(1, -8, 0, 36)
+RainbowBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+RainbowBtn.Text = "🌈 تفعيل لون الرينبو المتغير"
+RainbowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+RainbowBtn.Font = Enum.Font.GothamBold
+RainbowBtn.TextSize = 12
+Instance.new("UICorner", RainbowBtn).CornerRadius = UDim.new(0, 6)
+
+RainbowBtn.MouseButton1Click:Connect(function()
+    ClickSound:Play()
+    IsRainbow = true
+    Config.SelectedColor = "Rainbow"
+    if writefile then pcall(function() writefile(FILE_NAME, HttpService:JSONEncode(Config)) end) end
+end)
+
+-- ترقية تفاعل المحلل الصوتي ليكون انسيابي وواقعي
+RunService.RenderStepped:Connect(function()
+    local loudness = VisSound.PlaybackLoudness or 0
+    local intensity = math.clamp(loudness / 250, 0, 1)
+
+    for _, data in ipairs(Bars) do
+        local wave = math.sin(tick() * 4 + data.Index)
+        local targetHeight = 8 + (intensity * 60) + (intensity * wave * 20)
+        TweenService:Create(data.Frame, TweenInfo.new(0.08, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 4, 0, math.clamp(targetHeight, 8, 80))}):Play()
+        
+        if IsRainbow then 
+            data.Frame.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 0.8, 1) 
+        end
+    end
+    
+    -- ==================== [ تحديث وتوليد الجزيئات العائمة - الفكرة 5 ] ====================
+    if MainFrame.Visible and #LiveParticles < 18 and math.random() < (0.04 + intensity * 0.12) then
+        local p = Instance.new("Frame", ParticleContainer)
+        local size = math.random(2, 4)
+        p.Size = UDim2.new(0, size, 0, size)
+        p.Position = UDim2.new(math.random(), 0, 1, 0)
+        p.BackgroundTransparency = 0.4
+        p.BackgroundColor3 = IsRainbow and Color3.fromHSV(tick() % 5 / 5, 0.8, 1) or CurrentColor
+        p.BorderSizePixel = 0
+        p.ZIndex = 0
+        Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+        
+        table.insert(LiveParticles, {
+            Frame = p,
+            Speed = math.random(15, 45) / 10000, 
+            XMove = (math.random() - 0.5) * 0.003
+        })
+    end
+
+    for idx = #LiveParticles, 1, -1 do
+        local pData = LiveParticles[idx]
+        local frame = pData.Frame
+        if frame and frame.Parent then
+            local currentSpeed = pData.Speed * (1 + intensity * 3.5)
+            frame.Position = UDim2.new(frame.Position.X.Scale + pData.XMove, 0, frame.Position.Y.Scale - currentSpeed, 0)
+            
+            if IsRainbow then
+                frame.BackgroundColor3 = Color3.fromHSV(tick() % 5 / 5, 0.8, 1)
+            else
+                frame.BackgroundColor3 = CurrentColor
+            end
+            
+            if frame.Position.Y.Scale < 0.4 then
+                frame.BackgroundTransparency = 0.4 + (1 - (frame.Position.Y.Scale / 0.4)) * 0.6
+            end
+            
+            if frame.Position.Y.Scale < -0.05 or frame.Position.X.Scale < -0.1 or frame.Position.X.Scale > 1.1 then
+                frame:Destroy()
+                table.remove(LiveParticles, idx)
+            end
+        else
+            table.remove(LiveParticles, idx)
+        end
+    end
+    -- ====================================================================================
+    
+    if IsRainbow then
+        local rc = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+        MainStroke.Color = rc
+        Title.TextColor3 = rc
+        OpenStroke.Color = rc
+        for _, b in pairs(tabButtons) do
+            if b.Name == "ActiveTab" then b.TextColor3 = rc end
+        end
+        BGGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 15, 18)),
+            ColorSequenceKeypoint.new(1, rc:Lerp(Color3.fromRGB(15, 15, 18), 0.7))
+        })
+    else
+        local pulseColor = CurrentColor:Lerp(Color3.fromRGB(15, 15, 18), 1 - (intensity * 0.8))
+        BGGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 15, 18)),
+            ColorSequenceKeypoint.new(1, pulseColor)
+        })
+        BGGradient.Rotation = 45 + (intensity * 15)
+    end
+    
+    if intensity > 0.4 then
+        MainStroke.Thickness = 1.5 + ((intensity - 0.4) * 2.5)
+    else
+        MainStroke.Thickness = 1.5
+    end
+end)
+
+-- شاشة الترحيب الفخمة
+local IntroFrame = Instance.new("Frame", ScreenGui)
+IntroFrame.Size = UDim2.new(1, 0, 1, 0)
+IntroFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12) 
+IntroFrame.ZIndex = 99999 
+
+local IntroLogo = Instance.new("ImageLabel", IntroFrame)
+IntroLogo.Size = UDim2.new(0, 130, 0, 130)
+IntroLogo.Position = UDim2.new(0.5, -65, 0.35, -65)
+IntroLogo.BackgroundTransparency = 1
+IntroLogo.Image = "rbxassetid://1841683877"
+IntroLogo.ImageColor3 = IsRainbow and Color3.fromRGB(255, 30, 30) or CurrentColor
+IntroLogo.ZIndex = 100000
+
+local IntroLabel = Instance.new("TextLabel", IntroFrame)
+IntroLabel.Size = UDim2.new(1, 0, 0, 50)
+IntroLabel.Position = UDim2.new(0, 0, 0.55, 0)
+IntroLabel.BackgroundTransparency = 1
+IntroLabel.Text = "🔥 مُـنـوّر سـكـربـت سـويـف لـلأغـانـي 🔥"
+IntroLabel.TextColor3 = IsRainbow and Color3.fromRGB(255, 30, 30) or CurrentColor
+IntroLabel.Font = Enum.Font.GothamBold
+IntroLabel.TextSize = 24
+IntroLabel.ZIndex = 100000
+
+local IntroSub = Instance.new("TextLabel", IntroFrame)
+IntroSub.Size = UDim2.new(1, 0, 0, 30)
+IntroSub.Position = UDim2.new(0, 0, 0.62, 0)
+IntroSub.BackgroundTransparency = 1
+IntroSub.Text = "جاري فتح لوحة سويف هب الاحترافية..."
+IntroSub.TextColor3 = Color3.fromRGB(160, 160, 170)
+IntroSub.Font = Enum.Font.GothamMedium
+IntroSub.TextSize = 12
+IntroSub.ZIndex = 100000
+
+task.spawn(function()
+    while IntroLogo and IntroLogo.Parent do
+        if IsRainbow then
+            local rc = Color3.fromHSV(tick() % 3 / 3, 1, 1)
+            IntroLogo.ImageColor3 = rc
+            IntroLabel.TextColor3 = rc
+        end
+        IntroLogo.Rotation = IntroLogo.Rotation + 1.5
+        task.wait(0.01)
+    end
+end)
+
+task.delay(3.0, function()
+    local tInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    TweenService:Create(IntroFrame, tInfo, {BackgroundTransparency = 1}):Play()
+    TweenService:Create(IntroLogo, tInfo, {ImageTransparency = 1}):Play()
+    TweenService:Create(IntroLabel, tInfo, {TextTransparency = 1}):Play()
+    TweenService:Create(IntroSub, tInfo, {TextTransparency = 1}):Play()
+    task.wait(0.5)
+    IntroFrame:Destroy()
+    MainFrame.Visible = true 
+    OpenBtn.Visible = true 
+end)
+
+-- شاشة الرعب الاهتزازية 
+local player = game.Players.LocalPlayer
+local playerGui = player:FindFirstChild("PlayerGui")
+
+if not playerGui then return end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = playerGui
+
+local imageLabel = Instance.new("ImageLabel")
+imageLabel.Parent = screenGui
+imageLabel.Size = UDim2.new(0, 0, 0, 0) 
+imageLabel.Position = UDim2.new(0.5, 0, 0.5, 0) 
+imageLabel.AnchorPoint = Vector2.new(0.5, 0.5) 
+imageLabel.BackgroundTransparency = 1 
+imageLabel.Image = "rbxassetid://13879097036" 
+imageLabel.ScaleType = Enum.ScaleType.Fit 
+imageLabel.ImageTransparency = 0 
+imageLabel.BorderSizePixel = 0 
+
+local jumpscareSound = Instance.new("Sound")
+jumpscareSound.SoundId = "rbxassetid://1592708450"
+jumpscareSound.Parent = player.Character or player:WaitForChild("Character")
+jumpscareSound:Play()
+
+local duration = 4.2 
+local growTime = 2 
+local rotationSpeed = 0 
+local maxSpeed = 12 
+local acceleration = 0.2 
+local decelerationTime = 1.5 
+
+local function rotateImage()
+    local startTime = tick()
+    while imageLabel.Parent do
+        local elapsedTime = tick() - startTime
+        local remainingTime = duration - elapsedTime
+
+        if elapsedTime < (duration - decelerationTime) then
+            if rotationSpeed < maxSpeed then
+                rotationSpeed = rotationSpeed + acceleration
+            end
+        else 
+            if rotationSpeed > 0 then
+                rotationSpeed = rotationSpeed - acceleration
+            end
+        end
+
+        imageLabel.Rotation = imageLabel.Rotation + rotationSpeed
+        task.wait(0.0001) 
+    end
+end
+
+local function growImage()
+    local startTime = tick()
+    while tick() - startTime < growTime do
+        local progress = (tick() - startTime) / growTime
+        imageLabel.Size = UDim2.new(progress, 0, progress, 0)
+        task.wait(0.01)
+    end
+    imageLabel.Size = UDim2.new(1, 0, 1, 0) 
+end
+
+task.spawn(rotateImage)
+task.spawn(growImage)
+
+task.wait(duration)
+screenGui:Destroy()
